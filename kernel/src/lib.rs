@@ -10,11 +10,14 @@ use core::panic::PanicInfo;
 extern crate alloc;
 
 pub mod allocator;
+pub mod framebuffer;
 pub mod gdt;
 pub mod interrupts;
+pub mod logger;
 pub mod memory;
 pub mod serial;
 pub mod task;
+pub mod trap;
 pub mod vga_buffer;
 
 pub trait Testable {
@@ -53,6 +56,26 @@ pub fn init() {
     x86_64::instructions::interrupts::enable();
 }
 
+pub fn init_logger(
+    framebuffer: &'static mut [u8],
+    info: FrameBufferInfo,
+    log_level: LevelFilter,
+    frame_buffer_logger_status: bool,
+    serial_logger_status: bool,
+) {
+    let logger = logger::LOGGER.get_or_init(move || {
+        logger::LockedLogger::new(
+            framebuffer,
+            info,
+            frame_buffer_logger_status,
+            serial_logger_status,
+        )
+    });
+    log::set_logger(logger).expect("logger already set");
+    log::set_max_level(log_level);
+    log::info!("Framebuffer info: {:?}", info);
+}
+
 pub fn hlt_loop() -> ! {
     loop {
         x86_64::instructions::hlt();
@@ -61,6 +84,8 @@ pub fn hlt_loop() -> ! {
 
 #[cfg(test)]
 use bootloader::{entry_point, BootInfo};
+use bootloader_api::info::FrameBufferInfo;
+use log::LevelFilter;
 
 #[cfg(test)]
 entry_point!(test_kernel_main);
@@ -95,5 +120,5 @@ pub fn exit_qemu(exit_code: QemuExitCode) -> ! {
         port.write(exit_code as u32);
     }
 
-    loop {}
+    unreachable!();
 }
